@@ -1,0 +1,12 @@
+{
+  "name": "Killing Tweet Impressions",
+  "description": "インプ稼ぎを非表示",
+  "version": "1.0",
+  "manifest_version": 3,
+  "content_scripts": [
+    {
+      "matches": [ "https://twitter.com/*/status/*", "https://x.com/*/status/*" ],
+      "js": [ "script.js" ]
+    }
+  ]
+}
