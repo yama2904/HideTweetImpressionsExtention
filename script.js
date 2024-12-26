@@ -9,7 +9,20 @@ function getUserId(element) {
                 && x.parentNode.parentNode.tagName.toLowerCase() === "a";
     })[0];
 
-    return span.innerText;
+    return span != null ? span.innerText : null;
+}
+
+// 認証済みアカウント一覧取得
+function getAuthAccounts(parent) {
+    var authAccounts = new Array();
+    for (let i = 1; i < parent.children.length; i++) {
+        var account = parent.children[i];
+        if (isAuthAccount(account)) {
+            authAccounts.push(account);
+        }
+    }
+
+    return authAccounts;
 }
 
 // 認証済みアカウントであるか
@@ -30,86 +43,107 @@ function isAuthAccount(element) {
     return svg !== undefined && svg !== null;
 }
 
+// リプしている全てのIDを取得（重複は除去しない）
+function getReplyIds(timelineParent) {
+    // 戻り値初期化
+    var ids = new Array();
+
+    // リプ欄は2個目以降なのでlet i = 1;
+    for (let i = 1; i < timelineParent.children.length; i++) {
+        var id = getUserId(timelineParent.children[i]);
+        if (id != null) {
+            ids.push(id);
+        }
+    }
+
+    return ids;
+}
+
+// ツイート主にリプされたID一覧を取得
+function getRepliedbyTweeter(replyIds, tweeterId) {
+    // 戻り値初期化
+    var ids = new Array();
+
+    // 1番目にリプはありえないのでlet i = 1;
+    for (let i = 1; i < replyIds.length; i++) {
+        // ツイート主のIDの場合は1つ前のIDがリプされた想定
+        if (replyIds[i] === tweeterId && ids.indexOf(replyIds[i - 1]) === -1) {
+            ids.push(replyIds[i - 1]);
+        }
+    }
+
+    return ids;
+}
+
 // 自分のツイートを引用リツイートしているか
-function isQuoteTweet(element, userId) {
-    var spans = Array.from(element.getElementsByTagName("span"));
-    var userIdSpans = spans.filter(x => {
-        return x.innerText === userId;
-    });
+function isQuoteTweet(timelineParent, userId) {
+    for (let i = 0; i < timelineParent.children.length; i++) {
+        var spans = Array.from(timelineParent.children[i].getElementsByTagName("span"));
+        var userIdSpans = spans.filter(x => {
+            return x.innerText === userId;
+        });
+    }
 
     return userIdSpans.length >= 2;
 }
 
-// 認証済みアカウント一覧取得
-function getAuthAccounts(parent) {
-    var authAccounts = new Array();
-    for (let i = 1; i < parent.children.length; i++) {
-        var account = parent.children[i];
-        if (isAuthAccount(account)) {
-            authAccounts.push(account);
+// 指定したユーザを非表示
+function hideUser(timelineParent, userId) {
+    for (let i = 0; i < timelineParent.children.length; i++) {
+        var child = timelineParent.children[i];
+        if (userId === getUserId(child) && child.style.display !== "none") {
+            child.style.display = "none";
         }
     }
-
-    return authAccounts;
 }
 
 // インプ稼ぎを消す
-function hideImpressions(parent, sourceId) {
-    // ツイートに返信しているユーザID一覧
-    var replyIds = new Array();
-
+function hideImpressions(timelineParent, tweeterId) {
+    /* 削除
     // 認証済みアカウント一覧取得
-    var authAccounts = getAuthAccounts(parent);
+    var authAccounts = getAuthAccounts(timelineParent);
 
     // 認証済みアカウントが存在しない場合は処理終了
     if (authAccounts === undefined || authAccounts === null || authAccounts.length === 0) {
         return;
     }
+    */
 
-    // 認証済みアカウント全てに対して処理を行う
-    for (let i = 0; i < authAccounts.length; i++) {
-        var authAccount = authAccounts[i];
+    // リプ欄のユーザ一覧取得
+    var replyIds = getReplyIds(timelineParent);
 
-        // 返信しているアカウントのユーザID取得
-        var userId = getUserId(authAccount);
+    // ツイート主からリプされたID一覧取得
+    var repliedIds = getRepliedbyTweeter(replyIds, tweeterId);
+
+    // リプ欄の各ユーザに対して非表示チェック、非表示処理を実施
+    for (let i = 0; i < replyIds.length; i++) {
+        var id = replyIds[i];
+        
+        // ツイート主からリプされたIDの場合は無条件でOK
+        if (repliedIds.indexOf(id) >= 0) continue;
 
         // ツイート主と同じユーザはスキップ
-        if (userId == sourceId) {
+        if (id == tweeterId) {
             continue;
         }
 
         // 自分のツイートを引用リツイートしている場合は非表示対象
-        var hide = isQuoteTweet(authAccount, userId);
+        var hide = isQuoteTweet(timelineParent, id);
 
-        // 同じユーザが2回以上返信しているか
-        if (replyIds.indexOf(userId) === -1) {
-            replyIds.push(userId);
-        }
-        else {
-            // 2回以上返信しているユーザも非表示対象
+        // 2回以上返信している場合は非表示対象
+        var count = replyIds.reduce((acc, value) => value === id ? acc + 1 : acc, 0);
+        if (count >= 2) {
             hide = true;
         }
 
-        // 非表示IDリストに追加
+        // 非表示実行
         if (hide) {
-            if (hidedUserIds.indexOf(userId) === -1) {
-                hidedUserIds.push(userId);
-                console.log(userId + "を非表示");
-            }
-        }
-    }
+            hideUser(timelineParent, id);
 
-    // 上記で取得した非表示IDリストを元に非表示実行
-    for (let i = 0; i < authAccounts.length; i++) {
-        var authAccount = authAccounts[i];
-        
-        // ユーザID取得
-        var userId = getUserId(authAccount);
-
-        // 非表示IDリストに存在するユーザの場合は非表示
-        if (hidedUserIds.indexOf(userId) >= 0) {
-            if (authAccount.style.display !== "none") {
-                authAccount.style.display = "none";
+            // 非表示済みリストに追加、ログ出力
+            if (hidedUserIds.indexOf(id) === -1) {
+                hidedUserIds.push(id);
+                console.log(id + "を非表示");
             }
         }
     }
@@ -129,18 +163,18 @@ function main() {
         // 読み込みが完了しているためタイマーを停止
         clearInterval(jsInitCheckTimer);
 
-        // 返信欄の親要素
-        var parent = section.getElementsByTagName("div")[0].getElementsByTagName("div")[0];
+        // タイムラインの親要素
+        var timelineParent = section.getElementsByTagName("div")[0].getElementsByTagName("div")[0];
 
         // ツイート主のユーザID取得
-        var sourceId = getUserId(parent.getElementsByTagName("div")[0]);
+        var tweeterId = getUserId(timelineParent.getElementsByTagName("div")[0]);
         
         // インプ稼ぎを消す
-        hideImpressions(parent, sourceId);
+        hideImpressions(timelineParent, tweeterId);
 
         // スクロール等をして返信が増えた場合にも処理を行う
-        const observer = new MutationObserver(() => hideImpressions(parent, sourceId));
-        observer.observe(parent, {
+        const observer = new MutationObserver(() => hideImpressions(timelineParent, tweeterId));
+        observer.observe(timelineParent, {
             childList: true
         });
     }
